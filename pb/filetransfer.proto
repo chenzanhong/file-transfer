@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package filetransfer;
+
+option go_package = "file-transfer/pb";
+
+service FileTransferService {
+    // 客户端上传文件到指定服务器
+    rpc CommonUpload (CommonUploadRequest) returns (CommonUploadResponse);
+
+    // 客户端从指定服务器下载文件（返回流）
+    rpc CommonDownload (CommonDownloadRequest) returns (stream FileChunk);
+
+    // 两个服务器之间传输文件
+    rpc TransferBetweenTwoServers (TransferBetweenRequest) returns (TransferResponse);
+}
+
+message CommonUploadRequest {
+    string server = 1;
+    string path = 2;
+    string user = 3;
+    string auth = 4;
+    bytes file_data = 5;  // 上传的文件二进制数据
+}
+
+message CommonUploadResponse {
+    string message = 1;
+}
+
+message CommonDownloadRequest {
+    string server = 1;
+    string path = 2;
+    string user = 3;
+    string auth = 4;
+}
+
+message FileChunk {
+    bytes content = 1;
+}
+
+message TransferBetweenRequest {
+    string source_server = 1;
+    string target_server = 2;
+    string source_path = 3;
+    string target_path = 4;
+    string source_user = 5;
+    string target_user = 6;
+    string source_auth = 7;
+    string target_auth = 8;
+}
+
+message TransferResponse {
+    string message = 1;
+}

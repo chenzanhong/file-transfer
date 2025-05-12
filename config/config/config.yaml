@@ -1,0 +1,11 @@
+Logger:
+  ServiceName: "file-transfer-logs"
+  Mode: file
+  Encoding: plain
+  Level: info
+  Compress: true
+  Stat: false
+  KeepDays: 7
+  MaxBackups: 5
+  MaxSize: 20
+  Path: "./logs"
