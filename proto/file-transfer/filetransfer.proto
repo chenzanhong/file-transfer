@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package filetransfer;
 
-option go_package = "file-transfer/pb";
+option go_package = "file-transfer/proto/file-transfer";
 
 service FileTransferService {
     // 客户端上传文件到指定服务器

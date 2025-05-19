@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "file-transfer/proto/user";
+
+// 用户服务定义
+service UserService {
+  //获取主机信息、获取指定服务器信息
+  rpc GetHostInfo(GetHostInfoRequest) returns (GetHostInfoResponse) {}
+  //获取用户信息
+  rpc GetUserInfo(GetUserInfoRequest) returns (GetUserInfoResponse) {}
+}
+
+// 获取主机信息请求
+message GetHostInfoRequest {
+  string hostname = 1;
+}
+
+// 获取主机信息响应
+message GetHostInfoResponse {
+  int32 id = 1;
+  string user_name = 2; // 用户名
+  string host_name = 3; // 主机名
+  int32 company_id = 4; // 公司ID
+  string os = 5; // 操作系统
+  string platform = 6; // 平台
+  string kernel_arch = 7; // 内核架构
+  string created_at = 8; // 创建时间
+}
+
+//获取用户信息请求
+message GetUserInfoRequest {
+  string username = 1;
+}
+
+//获取用户信息响应
+message GetUserInfoResponse {
+  int32 id = 1;
+  string name = 2;
+  string realname = 3;
+  string email = 4;
+  string password = 5;
+  int32 role_id = 6;
+  int32 company_id = 7;
+  bool is_verified = 8;
+}

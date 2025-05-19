@@ -6,7 +6,7 @@ import (
 
 	"file-transfer/config"
 	grpcserver "file-transfer/grpc"
-	"file-transfer/pb"
+	ft "file-transfer/proto/file-transfer"
 	"file-transfer/transfer"
 	g "file-transfer/transfer/global"
 	trans "file-transfer/transfer/trans-init"
@@ -57,12 +57,12 @@ func main() {
 			logx.Errorf("failed to listen: %v", err)
 		}
 		grpcServer := grpc.NewServer()
-		pb.RegisterFileTransferServiceServer(grpcServer, &grpcserver.Server{})
+		ft.RegisterFileTransferServiceServer(grpcServer, &grpcserver.Server{})
 		logx.Info("gRPC 服务正在监听：9002")
 		if err := grpcServer.Serve(lis); err != nil {
 			logx.Errorf("failed to serve : %v", err)
 		}
 	}()
 
-	router.Run("0.0.0.0:8082")
+	router.Run("0.0.0.0:9085")
 }
