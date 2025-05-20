@@ -2,7 +2,6 @@ package global
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"sync"
@@ -46,9 +45,23 @@ func (p *SSHConnectionPool) Add(server string, client *ssh.Client) {
 	p.Lock()
 	defer p.Unlock()
 
-	// 如果已有连接，先关闭旧的
+	if !isConnectionValid(client) {
+		logx.Error("Add：无效的连接")
+		return
+	}
+
+	// 如果已有连接，，先关闭旧的，然后更新连接
 	if oldConn, exists := p.Connections[server]; exists {
-		p.Put(server, oldConn.Client) // 放回旧连接
+		if oldConn.Client == client { // 新旧连接相同
+			// 添加/更新连接
+			p.Connections[server] = &SSHConnection{
+				Client: client,
+				UsedAt: time.Now(),
+			}
+			return
+		}
+		oldConn.Client.Close()        // 关闭旧连接
+		delete(p.Connections, server) // 删除旧连接
 	}
 
 	if len(p.Connections) >= p.Capacity {
@@ -68,16 +81,17 @@ func (p *SSHConnectionPool) Get(server string) (*ssh.Client, error) {
 	defer p.Unlock()
 
 	if conn, exists := p.Connections[server]; exists {
-		if time.Since((*conn).UsedAt) > p.Timeout {
+		if time.Since((*conn).UsedAt) > p.Timeout || !isConnectionValid((*conn).Client) {
 			conn.Client.Close() // 连接超时，关闭并删除
 			delete(p.Connections, server)
+			return nil, errors.New("Get：连接已过期或无效")
 		} else {
 			(*conn).UsedAt = time.Now() // 更新使用时间
 			return (*conn).Client, nil
 		}
 	}
 	// 如果不存在有效连接，返回错误
-	return nil, errors.New("no available connection")
+	return nil, errors.New("Get：没有可用连接")
 }
 
 // 放回/更新连接到连接池中
@@ -85,14 +99,33 @@ func (p *SSHConnectionPool) Put(server string, client *ssh.Client) {
 	p.Lock()
 	defer p.Unlock()
 
-	// 如果已有连接，则更新
+	// 判断新连接是否有效
+	if !isConnectionValid(client) {
+		logx.Error("Put：无效的连接")
+		if client == p.Connections[server].Client { // 新旧连接相同
+			client.Close()                // 关闭旧连接
+			delete(p.Connections, server) // 删除旧连接
+		}
+		return
+	}
+
+	// 如果已有旧连接，则更新旧
 	if oldConn, exists := p.Connections[server]; exists {
 		if isConnectionValid(oldConn.Client) {
 			oldConn.UsedAt = time.Now()
+			// client.Close()
+			p.Connections[server] = oldConn
 			return
 		} else {
 			_ = oldConn.Client.Close()
+			delete(p.Connections, server)
 		}
+	}
+
+	// 没有旧连接或旧连接已失效，则判断容量，准备添加新连接
+	if len(p.Connections) >= p.Capacity {
+		client.Close() // 超过容量则关闭连接
+		return
 	}
 
 	p.Connections[server] = &SSHConnection{
@@ -108,10 +141,8 @@ func isConnectionValid(client *ssh.Client) bool {
 	}
 	defer session.Close()
 
-	_, err = session.CombinedOutput("echo `ping`")
-	if err != nil {
-		fmt.Println("Closed")
-	}
+	// _, err = session.StdoutPipe() // 尝试获取会话输出流，检查连接是否有效
+	_, err = session.CombinedOutput("whoami") // 检查连接是否有效
 	return err == nil
 }
 
@@ -142,28 +173,31 @@ func (p *SSHConnectionPool) Cleanup(stopChan chan struct{}) {
 func (fts *FileTransferServiceImpl) CreateCommonUploadTaskFromBytes(data []byte, server, path string) (string, error) {
 	client, err := fts.Pool.Get(server)
 	if err != nil {
+		logx.Errorf("获取连接失败: %v\n", err)
 		return "", err
 	}
+	defer fts.Pool.Put(server, client)
 
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
-		fts.Pool.Put(server, client)
+		logx.Errorf("创建SFTP客户端失败: %v\n", err)
 		return "", err
 	}
 	defer sftpClient.Close()
 
 	destFile, err := sftpClient.Create(path)
 	if err != nil {
+		logx.Errorf("创建远程文件失败: %v\n", err)
 		return "", err
 	}
 	defer destFile.Close()
 
 	_, err = destFile.Write(data)
 	if err != nil {
+		logx.Errorf("文件写入失败: %v\n", err)
 		return "", err
 	}
 
-	fts.Pool.Put(server, client)
 	return uuid.New().String(), nil
 }
 
@@ -172,26 +206,31 @@ func (fts *FileTransferServiceImpl) CreateCommonUploadTask(file *multipart.FileH
 	// 获取连接（不放回，因为传输过程中需要保持连接）
 	client, err := fts.Pool.Get(server)
 	if err != nil {
+		logx.Errorf("获取连接失败: %v\n", err)
 		return "", err
 	}
+	defer fts.Pool.Put(server, client)
 
 	// 创建SFTP客户端
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
+		logx.Errorf("创建SFTP客户端失败: %v\n", err)
 		fts.Pool.Put(server, client) // 放回连接
 		return "", err
 	}
-	defer sftpClient.Close() // 确保在函数结束时关闭SFTP客户端
+	defer sftpClient.Close()
 
 	// 实际传输逻辑
 	srcFile, err := file.Open()
 	if err != nil {
+		logx.Errorf("打开文件失败: %v", err)
 		return "", err
 	}
 	defer srcFile.Close()
 
 	destFile, err := sftpClient.Create(path) // 创建远程文件
 	if err != nil {
+		logx.Errorf("创建远程文件失败: %v", err)
 		return "", err
 	}
 	defer destFile.Close()
@@ -207,8 +246,6 @@ func (fts *FileTransferServiceImpl) CreateCommonUploadTask(file *multipart.FileH
 		logx.Errorf("文件权限设置失败: %v", err)
 		return "", err
 	}
-	// 传输完成后放回连接
-	fts.Pool.Put(server, client)
 
 	// 生成任务ID
 	taskID := uuid.New().String()
@@ -221,17 +258,18 @@ func (fts *FileTransferServiceImpl) CreateCommonDownloadTask(server, path string
 	// 获取连接
 	client, err := fts.Pool.Get(server)
 	if err != nil {
+		logx.Errorf("获取连接失败: %v\n", err)
 		return nil, "", err
 	}
+	defer fts.Pool.Put(server, client)
 	// 创建SFTP客户端
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
+		logx.Errorf("创建SFTP客户端失败: %v\n", err)
 		fts.Pool.Put(server, client) // 放回连接
 		return nil, "", err
 	}
-
-	// 不Put，因为需要保持连接
-	// fts.Pool.Put(server, client)
+	// defer sftpClient.Close() // 不关闭，后面需要使用
 
 	// 生成任务ID
 	taskID := uuid.New().String()
@@ -244,67 +282,44 @@ func (fts *FileTransferServiceImpl) CreateTransferBetween2STask(srcServer, srcPa
 	// 获取连接（不放回，因为传输过程中需要保持连接）
 	srcClient, err := fts.Pool.Get(srcServer)
 	if err != nil {
-		fmt.Println(1)
+		logx.Errorf("获取连接失败: %v\n", err)
 		return "", err
 	}
+	defer fts.Pool.Put(srcServer, srcClient)
 
 	destClient, err := fts.Pool.Get(destServer)
 	if err != nil {
-		fts.Pool.Put(srcServer, srcClient) // 放回源连接
-		fmt.Println(2)
+		logx.Errorf("获取连接失败: %v\n", err)
 		return "", err
 	}
+	defer fts.Pool.Put(destServer, destClient)
 
 	// 创建SFTP客户端
 	srcSftp, err := sftp.NewClient(srcClient)
 	if err != nil {
-		fts.Pool.Put(srcServer, srcClient)
-		fts.Pool.Put(destServer, destClient)
-		fmt.Println(3)
+		logx.Errorf("创建SFTP客户端失败: %v\n", err)
 		return "", err
 	}
-	defer func() {
-		if err != nil {
-			// srcSftp.Close()
-			fts.Pool.Put(srcServer, srcClient)
-			fts.Pool.Put(destServer, destClient)
-		}
-	}()
+	defer srcSftp.Close()
 
 	destSftp, err := sftp.NewClient(destClient)
 	if err != nil {
-		// srcSftp.Close()
-		fts.Pool.Put(srcServer, srcClient)
-		fts.Pool.Put(destServer, destClient)
-		fmt.Println(4)
+		logx.Errorf("创建SFTP客户端失败: %v\n", err)
 		return "", err
 	}
-	defer func() {
-		if err != nil {
-			destSftp.Close()
-			fts.Pool.Put(destServer, destClient)
-		}
-	}()
+	defer destSftp.Close()
 
 	// 实际传输逻辑
 	srcFile, err := srcSftp.Open(srcPath)
 	if err != nil {
-		srcSftp.Close()
-		destSftp.Close()
-		fts.Pool.Put(srcServer, srcClient)
-		fts.Pool.Put(destServer, destClient)
-		fmt.Println(5)
+		logx.Errorf("打开源文件失败: %v", err)
 		return "", err
 	}
 	defer srcFile.Close()
 
 	destFile, err := destSftp.Create(destPath)
 	if err != nil {
-		srcSftp.Close()
-		destSftp.Close()
-		fts.Pool.Put(srcServer, srcClient)
-		fts.Pool.Put(destServer, destClient)
-		fmt.Println(6)
+		logx.Errorf("创建目标文件失败: %v", err)
 		return "", err
 	}
 	defer destFile.Close()
@@ -312,28 +327,14 @@ func (fts *FileTransferServiceImpl) CreateTransferBetween2STask(srcServer, srcPa
 	// 复制文件内容
 	if _, err := io.Copy(destFile, srcFile); err != nil {
 		logx.Errorf("文件复制失败: %v", err)
-		srcSftp.Close()
-		destSftp.Close()
-		fts.Pool.Put(srcServer, srcClient)
-		fts.Pool.Put(destServer, destClient)
-		fmt.Println(7)
 		return "", err
 	}
 
 	// 确保文件权限正确
 	if err := destSftp.Chmod(destPath, 0644); err != nil { // 假设目标文件需要0644权限
 		logx.Errorf("文件权限设置失败: %v", err)
-		srcSftp.Close()
-		destSftp.Close()
-		fts.Pool.Put(srcServer, srcClient)
-		fts.Pool.Put(destServer, destClient)
-		fmt.Println(8)
 		return "", err
 	}
-
-	// 传输完成后放回连接
-	fts.Pool.Put(srcServer, srcClient)
-	fts.Pool.Put(destServer, destClient)
 
 	// 生成任务ID
 	taskID := uuid.New().String()

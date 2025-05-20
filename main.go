@@ -31,7 +31,7 @@ func main() {
 	router.Use(cors.CORSMiddleware())
 
 	// 初始化SSH连接池及文件传输服务
-	g.Pool = trans.NewSSHConnectionPool(10, 5*time.Minute)
+	g.Pool = trans.NewSSHConnectionPool(10, 10*time.Minute)
 	stopChan := make(chan struct{})
 	defer close(stopChan)
 	go g.Pool.Cleanup(stopChan)          // 启动清理协程

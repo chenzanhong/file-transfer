@@ -14,12 +14,8 @@ import (
 	g "file-transfer/transfer/global"
 	trans "file-transfer/transfer/trans-init" // 请替换为您的实际项目路径
 
-	// "file-transfer/proto/user"
-
 	"github.com/gin-gonic/gin"
 	"github.com/zeromicro/go-zero/core/logx"
-	// "google.golang.org/grpc"
-	// "google.golang.org/grpc/credentials/insecure"
 )
 
 type RequestP2P struct {
@@ -77,12 +73,13 @@ func CheckServerBelongs(username, server string) (bool, error) {
 
 // 指定两个服务器之间进行单文件传输
 func TransferBetweenTwoServer(c *gin.Context) {
-	username, exists := c.Get("username") // 从上下文中获取用户名
+	Username, exists := c.Get("username") // 从上下文中获取用户名
 	if !exists {
 		logx.Error("用户未登录")
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "未登录"})
 		return
 	}
+	username := Username.(string) // 类型断言，将接口类型转换为字符串类型
 
 	var request RequestP2P
 	if err := c.BindJSON(&request); err != nil {
@@ -91,7 +88,7 @@ func TransferBetweenTwoServer(c *gin.Context) {
 		return
 	}
 
-	flag, err := CheckServerBelongs(username.(string), request.SourceServer)
+	flag, err := CheckServerBelongs(username, request.SourceServer)
 	if err != nil {
 		logx.Errorf("查询用户与源服务器是否属于同一公司失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": fmt.Sprintf("查询源服务器是否属于用户（所在公司）失败: %v", err.Error())})
@@ -102,7 +99,7 @@ func TransferBetweenTwoServer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "该源服务器不是用户所在公司的服务器"})
 		return
 	}
-	flag, err = CheckServerBelongs(username.(string), request.TargetServer)
+	flag, err = CheckServerBelongs(username, request.TargetServer)
 	if err != nil {
 		logx.Errorf("查询用户与目的服务器是否属于同一公司失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": fmt.Sprintf("查询目标服务器是否属于用户（所在公司）失败: %v", err.Error())})
@@ -217,6 +214,7 @@ func CommonUpload(c *gin.Context) {
 	}
 
 	fmt.Printf("文件上传任务已完成，任务ID: %s\n", taskID)
+	c.JSON(http.StatusOK, gin.H{"message": "文件上传完成", "task_id": taskID})
 }
 
 // 客户端与一个指定的服务器进行文件传输，下载
@@ -290,7 +288,7 @@ func CommonDownload(c *gin.Context) {
 
 	filename := path.Base(request.Path)
 	encodedFilename := url.PathEscape(filename)
-	fmt.Println(filename + "\n" + encodedFilename)
+	// fmt.Println(filename + "\n" + encodedFilename)
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", "attachment; "+fmt.Sprintf(`filename="%s"; filename*=UTF-8''%s`,
 		encodedFilename, encodedFilename))
