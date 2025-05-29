@@ -1,6 +1,7 @@
 package main
 
 import (
+	"file-transfer/logs"
 	"file-transfer/middlewire"
 	cors "file-transfer/middlewire/cors"
 
@@ -20,9 +21,12 @@ import (
 )
 
 func main() {
+	logs.InitZapSugarDefault()
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		logx.Errorf("加载配置失败：%v", err)
+		return
 	}
 
 	config.SetupLogx(cfg)
@@ -42,12 +46,15 @@ func main() {
 	router.Static("/static", "./static")
 
 	// 需要 JWT 认证的路由
-	auth := router.Group("/agent", middlewire.JWTAuthMiddleware())
+	auth := router.Group("/filetransfer", middlewire.JWTAuthMiddleware())
 	{
 		// 文件传输
 		auth.POST("/upload", transfer.CommonUpload)
 		auth.POST("/download", transfer.CommonDownload)
 		auth.POST("/transfer", transfer.TransferBetweenTwoServer)
+
+		// 日志
+		auth.GET("/getuseroprationlog", logs.GetUserOperationLog)
 	}
 
 	// 启动 gRPC 服务
@@ -64,5 +71,5 @@ func main() {
 		}
 	}()
 
-	router.Run("0.0.0.0:9085")
+	router.Run("0.0.0.0:8082")
 }
