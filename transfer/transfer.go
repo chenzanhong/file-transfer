@@ -73,7 +73,7 @@ func CheckServerBelongs(username, server string) (bool, error) {
 	return true, nil // 测试环境,暂时不做判断
 }
 
-// 指定两个服务器之间进行单文件传输
+// 两服务器间单文件传输
 func TransferBetweenTwoServer(c *gin.Context) {
 	Username, exists := c.Get("username") // 从上下文中获取用户名
 	if !exists {
@@ -86,7 +86,7 @@ func TransferBetweenTwoServer(c *gin.Context) {
 	var request RequestP2P
 	if err := c.BindJSON(&request); err != nil {
 		logx.Errorf("解析请求失败: %v", err)
-		logs.Sugar.Errorw("指定两个服务器之间进行单文件传输", "username", username, "detail", "解析请求失败，请检查请求格式是否正确")
+		logs.Sugar.Errorw("两服务器间单文件传输", "username", username, "detail", "解析请求失败，请检查请求格式是否正确")
 		c.JSON(http.StatusBadRequest, gin.H{"message": fmt.Sprintf("解析请求失败: %v", err)})
 		return
 	}
@@ -99,7 +99,7 @@ func TransferBetweenTwoServer(c *gin.Context) {
 	}
 	if !flag {
 		logx.Error("该源服务器不属于用户（所在公司）")
-		logs.Sugar.Errorw("指定两个服务器之间进行单文件传输", "username", username, "detail", "该源服务器不属于用户（所在公司）")
+		logs.Sugar.Errorw("两服务器间单文件传输", "username", username, "detail", "该源服务器不属于用户（所在公司）")
 		c.JSON(http.StatusBadRequest, gin.H{"message": "该源服务器不属于用户（所在公司）"})
 		return
 	}
@@ -111,7 +111,7 @@ func TransferBetweenTwoServer(c *gin.Context) {
 	}
 	if !flag {
 		logx.Error("该目标服务器不属于用户（所在公司）")
-		logs.Sugar.Errorw("指定两个服务器之间进行单文件传输", "username", username, "detail", "该目标服务器不属于用户（所在公司）")
+		logs.Sugar.Errorw("两服务器间单文件传输", "username", username, "detail", "该目标服务器不属于用户（所在公司）")
 		c.JSON(http.StatusForbidden, gin.H{"message": "该目标服务器不属于用户（所在公司）"})
 		return
 	}
@@ -126,7 +126,7 @@ func TransferBetweenTwoServer(c *gin.Context) {
 		err = trans.CreateConnectionToPool(g.Pool, request.SourceServer, request.SourceUser, request.SourceAuth)
 		if err != nil {
 			logx.Errorf("创建与源服务器的连接失败: %v", err)
-			logs.Sugar.Errorw("指定两个服务器之间进行单文件传输", "username", username, "detail", "创建与源服务器的连接失败，请检查源服务器是否正确")
+			logs.Sugar.Errorw("两服务器间单文件传输", "username", username, "detail", "创建与源服务器的连接失败，请检查源服务器是否正确")
 			c.JSON(http.StatusBadRequest, gin.H{"message": fmt.Sprintf("创建与源服务器的连接失败: %v", err)})
 			return
 		}
@@ -137,7 +137,7 @@ func TransferBetweenTwoServer(c *gin.Context) {
 		err = trans.CreateConnectionToPool(g.Pool, request.TargetServer, request.TargetUser, request.TargetAuth)
 		if err != nil {
 			logx.Errorf("创建与目标服务器的连接失败: %v", err)
-			logs.Sugar.Errorw("指定两个服务器之间进行单文件传输", "username", username, "detail", "创建与目标服务器的连接失败，请检查目标服务器是否正确")
+			logs.Sugar.Errorw("两服务器间单文件传输", "username", username, "detail", "创建与目标服务器的连接失败，请检查目标服务器是否正确")
 			c.JSON(http.StatusBadRequest, gin.H{"message": fmt.Sprintf("创建与目标服务器的连接失败: %v", err)})
 			return
 		}
@@ -152,13 +152,13 @@ func TransferBetweenTwoServer(c *gin.Context) {
 	)
 	if err != nil {
 		logx.Errorf("文件传输失败: %v", err)
-		logs.Sugar.Errorw("指定两个服务器之间进行单文件传输", "username", username, "detail", "文件传输失败，请确认文件路径是否正确")
+		logs.Sugar.Errorw("两服务器间单文件传输", "username", username, "detail", "文件传输失败，请确认文件路径是否正确")
 		c.JSON(http.StatusInternalServerError, gin.H{"message": fmt.Sprintf("文件传输失败: %v", err), "task_id": taskID})
 		return
 	}
 
 	logx.Infof("文件传输成功，任务ID: %s", taskID)
-	logs.Sugar.Infow("指定两个服务器之间进行单文件传输", "username", username, "detail", "文件传输成功，任务ID："+taskID)
+	logs.Sugar.Infow("两服务器间单文件传输", "username", username, "detail", "文件传输成功，任务ID："+taskID)
 	c.JSON(http.StatusOK, gin.H{"message": "文件传输任务已启动", "task_id": taskID})
 }
 

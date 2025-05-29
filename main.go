@@ -54,7 +54,7 @@ func main() {
 		auth.POST("/transfer", transfer.TransferBetweenTwoServer)
 
 		// 日志
-		auth.GET("/getuseroprationlog", logs.GetUserOperationLog)
+		auth.POST("/getuseroprationlogs", logs.GetUserOperationLogs)
 	}
 
 	// 启动 gRPC 服务
